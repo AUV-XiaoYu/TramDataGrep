@@ -18,6 +18,16 @@ def _parse_list_env(env_name, default):
     return default
 
 
+def _resolve_backend():
+    """解析数据后端：oracle | demo_large | demo_real。向后兼容旧的 DEMO_MODE 布尔开关。"""
+    val = os.environ.get("DATA_BACKEND", "").strip().lower()
+    if val in ("oracle", "demo_large", "demo_real"):
+        return val
+    if os.environ.get("DEMO_MODE") == "1":
+        return "demo_large"
+    return "oracle"
+
+
 class Config:
     # ===== Flask 安全配置 =====
     SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
@@ -37,8 +47,19 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     PERMANENT_SESSION_LIFETIME = 28800  # 8 小时
 
-    # ===== 演示模式（无需 Oracle 即可运行） =====
+    # ===== 数据后端（oracle / demo_large / demo_real） =====
+    # 由 DATA_BACKEND 环境变量选择；未设置时向后兼容旧的 DEMO_MODE 布尔开关。
+    DATA_BACKEND = _resolve_backend()
+
+    # ===== 演示模式（已由 DATA_BACKEND 取代，保留仅为向后兼容） =====
     DEMO_MODE = os.environ.get("DEMO_MODE", "0") == "1"
+
+    # ===== 真实数据模式（从 SQL 文件构建本地 SQLite 库） =====
+    REAL_DATA_SQL_PATH = os.environ.get("REAL_DATA_SQL_PATH") or None
+    REAL_DATA_DB_PATH = os.environ.get("REAL_DATA_DB_PATH") or os.path.join(
+        _base_dir, "instance", "real_data.db"
+    )
+    REAL_DATA_OWNER = os.environ.get("REAL_DATA_OWNER", "TRAM")
 
     # ===== 表过滤配置 =====
     # 模式: "all"（列出所有表）、"whitelist"（仅显示匹配的表）、"blacklist"（排除匹配的表）

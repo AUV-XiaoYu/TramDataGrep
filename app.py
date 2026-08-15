@@ -30,11 +30,9 @@ from auth import (
 from werkzeug.security import check_password_hash
 import export
 
-# 演示模式：用模拟数据替代 Oracle
-if Config.DEMO_MODE:
-    import db_demo as db_oracle
-else:
-    import db_oracle
+# 数据后端：oracle / demo_large / demo_real，由 Config.DATA_BACKEND 决定
+from backend import get_backend
+db_oracle = get_backend()
 
 
 def _parse_date_filter(req):
