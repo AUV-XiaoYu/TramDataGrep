@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}{{ table_name }} - 电车票务数据平台{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('index') }}">数据表浏览</a></li>
+        <li class="breadcrumb-item active">{{ owner }}.{{ table_name }}</li>
+    </ol>
+</nav>
+
+<!-- 日期筛选卡片 -->
+{% if date_columns %}
+<div class="card mb-3 border-primary">
+    <div class="card-header bg-primary bg-opacity-10">
+        <i class="bi bi-calendar-range text-primary"></i>
+        <strong>按日期筛选</strong>
+        <small class="text-muted ms-2">选择日期列和范围，缩小导出数据量</small>
+    </div>
+    <div class="card-body py-2">
+        <form method="GET" action="{{ url_for('table_preview', table_name=table_name, owner=owner) }}" class="row g-2 align-items-end" id="date-filter-form">
+            <div class="col-auto">
+                <label class="form-label small text-muted">日期列</label>
+                <select name="date_col" id="date_col" class="form-select form-select-sm" style="min-width:160px;">
+                    <option value="">— 不过滤 —</option>
+                    {% for dc in date_columns %}
+                    <option value="{{ dc }}" {% if date_col == dc %}selected{% endif %}>{{ dc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label small text-muted">开始日期</label>
+                <input type="date" id="date_start" name="date_start" class="form-control form-control-sm"
+                       value="{{ date_start }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label small text-muted">结束日期</label>
+                <input type="date" id="date_end" name="date_end" class="form-control form-control-sm"
+                       value="{{ date_end }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-funnel"></i> 查询
+                </button>
+                {% if date_col %}
+                <a href="{{ url_for('table_preview', table_name=table_name, owner=owner) }}"
+                   class="btn btn-sm btn-outline-secondary ms-1">
+                    <i class="bi bi-x-circle"></i> 清除
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- 下载方案警告 -->
+{% if plan.warning_level == 'blocked' %}
+<div class="alert alert-danger">
+    <i class="bi bi-x-octagon-fill"></i>
+    <strong>仅支持分片下载：</strong>{{ plan.warning_message }}
+</div>
+{% elif plan.warning_level == 'huge' %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <strong>大表警告：</strong>{{ plan.warning_message }}
+</div>
+{% elif plan.warning_level == 'large' %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle-fill"></i>
+    {{ plan.warning_message }}
+</div>
+{% elif date_col and plan.warning_level == 'safe' %}
+<div class="alert alert-success py-2">
+    <i class="bi bi-check-circle-fill"></i>
+    日期筛选后共 <strong>{{ "{:,}".format(plan.row_count) }}</strong> 行，预计 <strong>{{ "%.1f"|format(plan.est_size_mb) }} MB</strong>，可以安全下载。
+</div>
+{% endif %}
+
+<!-- 表信息 + 操作 -->
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <i class="bi bi-grid-3x3-gap-fill text-primary"></i>
+            <strong>{{ table_name }}</strong>
+            <small class="text-muted ms-2">({{ owner }})</small>
+            {% if date_col %}
+            <span class="badge bg-primary ms-2">{{ date_col }}: {{ date_start }} ~ {{ date_end }}</span>
+            {% endif %}
+        </div>
+        <div class="btn-group">
+            {% if plan.warning_level == 'blocked' %}
+            <span class="btn btn-secondary disabled" title="表过大，仅支持分片下载">
+                <i class="bi bi-download"></i> 仅分片下载
+            </span>
+            {% elif plan.warning_level == 'huge' %}
+            <a href="{{ url_for('download', table_name=table_name, owner=owner, confirm=1,
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-download" title="Excel 格式 (.xlsx)">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Excel (确认)
+            </a>
+            <a href="{{ url_for('download', table_name=table_name, owner=owner, confirm=1, format='csv',
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-outline-primary btn-download" title="CSV 格式 (.csv)">
+                <i class="bi bi-filetype-csv"></i> CSV
+            </a>
+            {% else %}
+            <a href="{{ url_for('download', table_name=table_name, owner=owner,
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-download" title="Excel 格式 (.xlsx)">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Excel
+            </a>
+            <a href="{{ url_for('download', table_name=table_name, owner=owner, format='csv',
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-outline-primary btn-download" title="CSV 格式 (.csv)">
+                <i class="bi bi-filetype-csv"></i> CSV
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted">{% if date_col %}筛选后{% endif %}行数：</span>
+                <strong>{{ "{:,}".format(plan.row_count) }}</strong>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted">列数：</span>
+                <strong>{{ columns_info|length }}</strong>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted">预估大小：</span>
+                <strong>{% if plan.est_size_mb > 0 %}{{ "%.1f"|format(plan.est_size_mb) }} MB{% else %}—{% endif %}</strong>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted">预览行数：</span>
+                <strong>前 {{ rows|length }} 行</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 分片下载 -->
+{% if plan.needs_split and plan.chunks > 1 %}
+<div class="card mb-3 border-warning" id="chunk-download-card">
+    <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+        <div>
+            <i class="bi bi-puzzle-fill text-warning"></i>
+            <strong>分片下载</strong>
+            <small class="text-muted ms-2">共 <strong>{{ plan.chunks }}</strong> 片，每片约 <strong>{{ "{:,}".format(plan.chunk_rows) }}</strong> 行</small>
+        </div>
+        <span class="badge bg-warning text-dark" id="chunk-total-badge">{{ plan.chunks }} 片</span>
+    </div>
+    <div class="card-body">
+        <!-- 一键下载全部 ZIP -->
+        <div class="mb-2">
+            <a href="{{ url_for('download_all_chunks', table_name=table_name, owner=owner,
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-warning" id="download-all-btn"
+               onclick="return startAllDownload(this, {{ plan.chunks }})">
+                <i class="bi bi-file-zip"></i> 下载全部分片 (Excel ZIP)
+            </a>
+            <a href="{{ url_for('download_all_chunks', table_name=table_name, owner=owner, format='csv',
+                     date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+               class="btn btn-outline-warning" id="download-all-csv-btn"
+               onclick="return startAllDownload(this, {{ plan.chunks }})">
+                <i class="bi bi-file-zip"></i> CSV ZIP
+            </a>
+            <span id="download-progress" class="ms-2 text-muted" style="display:none;">
+                <span class="spinner-border spinner-border-sm"></span>
+                正在打包 <strong id="progress-total">{{ plan.chunks }}</strong> 个分片，请稍候...
+            </span>
+        </div>
+
+        <!-- 单片下载（折叠收起，减少干扰） -->
+        <p class="mb-0">
+            <a class="text-muted small text-decoration-none" data-bs-toggle="collapse"
+               href="#single-chunks" role="button" id="toggle-single-chunks">
+                <i class="bi bi-chevron-right" id="toggle-icon"></i>
+                或逐个下载单片（{{ plan.chunks }} 片）
+            </a>
+        </p>
+        <div class="collapse mt-2" id="single-chunks">
+            <div class="d-flex flex-wrap gap-1">
+                {% for i in range(plan.chunks) %}
+                <a href="{{ url_for('download', table_name=table_name, owner=owner, chunk=i,
+                         date_col=date_col or '', date_start=date_start or '', date_end=date_end or '') }}"
+                   class="btn btn-sm btn-outline-warning chunk-single-btn">
+                    第 {{ i + 1 }} 片
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 列信息 -->
+<div class="card mb-3">
+    <div class="card-header">
+        <i class="bi bi-info-circle"></i> 列信息（共 {{ columns_info|length }} 列）
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>列名</th>
+                    <th>数据类型</th>
+                    <th>长度</th>
+                    <th>可为空</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col in columns_info %}
+                <tr>
+                    <td class="text-muted">{{ col.column_id }}</td>
+                    <td>
+                        <code>{{ col.column_name }}</code>
+                        {% if col.data_type in ('DATE','TIMESTAMP') %}
+                        <span class="badge bg-info text-dark" style="font-size:.65rem">日期</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ col.data_type }}
+                        {% if col.data_precision %}
+                        <small class="text-muted">({{ col.data_precision }},{{ col.data_scale or 0 }})</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ col.data_length or '—' }}</td>
+                    <td>
+                        {% if col.nullable == 'Y' %}
+                        <span class="badge bg-success">YES</span>
+                        {% else %}
+                        <span class="badge bg-secondary">NO</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 数据预览 -->
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-eye"></i> 数据预览（前 {{ preview_limit }} 行）
+        {% if rows|length == preview_limit %}
+        <small class="text-muted ms-2">仅显示前 {{ preview_limit }} 行</small>
+        {% endif %}
+    </div>
+    <div class="table-responsive" style="max-height: 600px; overflow: auto;">
+        <table class="table table-sm table-hover mb-0" style="white-space: nowrap;">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th class="text-muted">#</th>
+                    {% for col in columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="text-muted" style="min-width:40px;">{{ loop.index }}</td>
+                    {% for val in row %}
+                    <td>
+                        {% if val is none %}
+                        <span class="text-muted fst-italic">(空)</span>
+                        {% elif val is string and val|length > 200 %}
+                        <span title="{{ val }}">{{ val[:200] }}...</span>
+                        {% else %}
+                        {{ val }}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                {% if not rows %}
+                <tr>
+                    <td colspan="{{ columns|length + 1 }}" class="text-center text-muted py-4">
+                        表中没有数据
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// 日期列下拉框切换时即时启用/禁用日期输入
+(function () {
+    var sel = document.getElementById("date_col");
+    var ds = document.getElementById("date_start");
+    var de = document.getElementById("date_end");
+    if (!sel || !ds || !de) return;
+
+    function toggle() {
+        var on = sel.value !== "";
+        ds.disabled = !on;
+        de.disabled = !on;
+        if (!on) {
+            ds.value = "";
+            de.value = "";
+        }
+    }
+
+    // 页面初始状态
+    toggle();
+
+    sel.addEventListener("change", toggle);
+})();
+
+// 全部分片 ZIP 下载：显示打包进度提示
+function startAllDownload(btn, totalChunks) {
+    var prog = document.getElementById("download-progress");
+    if (prog) {
+        prog.style.display = "";
+    }
+    // 几秒后隐藏（浏览器接管下载后无需继续显示）
+    setTimeout(function () {
+        if (prog) prog.style.display = "none";
+    }, 8000);
+    return true; // 允许链接正常跳转
+}
+
+// 单片折叠面板的箭头图标切换
+(function () {
+    var toggle = document.getElementById("toggle-single-chunks");
+    var icon = document.getElementById("toggle-icon");
+    var target = document.getElementById("single-chunks");
+    if (!toggle || !icon || !target) return;
+    target.addEventListener("show.bs.collapse", function () {
+        icon.classList.remove("bi-chevron-right");
+        icon.classList.add("bi-chevron-down");
+    });
+    target.addEventListener("hide.bs.collapse", function () {
+        icon.classList.remove("bi-chevron-down");
+        icon.classList.add("bi-chevron-right");
+    });
+})();
+</script>
+
+{% endblock %}

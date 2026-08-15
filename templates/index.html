@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}数据表浏览 - 电车票务数据平台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-table"></i> 数据表浏览</h4>
+        <small class="text-muted">
+            共 {{ table_count }} 个数据表
+            {% if filter_info %}{{ filter_info }}{% endif %}
+        </small>
+    </div>
+    <div class="search-box" style="width: 320px;">
+        <i class="bi bi-search"></i>
+        <input type="text" class="form-control" id="tableSearch"
+               placeholder="搜索表名..." value="{{ search }}"
+               oninput="filterTables(this.value)">
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <strong>数据库连接失败：</strong>{{ error }}
+    <hr>
+    <small>请检查 config.py 中的 Oracle 连接配置，或设置环境变量 ORACLE_USER / ORACLE_PASSWORD / ORACLE_DSN。</small>
+</div>
+{% endif %}
+
+{% if grouped %}
+    {% for owner, tables in grouped.items() %}
+    <div class="card schema-group" data-owner="{{ owner }}">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>
+                <i class="bi bi-folder-fill text-warning"></i>
+                <strong>{{ owner }}</strong>
+                <span class="stat-badge ms-2">{{ tables|length }} 个表</span>
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#schema-{{ loop.index }}">
+                <i class="bi bi-chevron-up"></i>
+            </button>
+        </div>
+        <div class="collapse show" id="schema-{{ loop.index }}">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>表名</th>
+                            <th class="text-end">预估行数</th>
+                            <th>最后分析时间</th>
+                            <th class="text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in tables %}
+                        {% set row_count = t.num_rows or 0 %}
+                        <tr class="table-row" data-table-name="{{ t.table_name | lower }}">
+                            <td>
+                                <a href="{{ url_for('table_preview', table_name=t.table_name, owner=t.owner) }}"
+                                   class="text-decoration-none fw-semibold">
+                                    <i class="bi bi-grid-3x3-gap-fill text-primary"></i>
+                                    {{ t.table_name }}
+                                </a>
+                            </td>
+                            <td class="text-end">
+                                {% if t.num_rows %}
+                                    {% if row_count > config.MAX_DOWNLOAD_ROWS %}
+                                    <span class="badge bg-danger" title="超过下载上限，需分片下载">{{ "{:,}".format(row_count) }}</span>
+                                    <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size:.75rem"></i>
+                                    {% elif row_count > config.DOWNLOAD_CONFIRM_ROWS %}
+                                    <span class="badge bg-warning text-dark" title="大表，建议分片下载">{{ "{:,}".format(row_count) }}</span>
+                                    <i class="bi bi-exclamation-circle text-warning" style="font-size:.75rem"></i>
+                                    {% elif row_count > config.DOWNLOAD_WARN_ROWS %}
+                                    <span class="badge bg-info text-dark" title="较大表，下载可能需要几分钟">{{ "{:,}".format(row_count) }}</span>
+                                    {% else %}
+                                    <span class="stat-badge text-success">{{ "{:,}".format(row_count) }}</span>
+                                    {% endif %}
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if t.last_analyzed %}
+                                <small class="text-muted">{{ t.last_analyzed.strftime('%Y-%m-%d %H:%M') if t.last_analyzed else '—' }}</small>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('table_preview', table_name=t.table_name, owner=t.owner) }}"
+                                   class="btn btn-sm btn-outline-primary" title="预览数据">
+                                    <i class="bi bi-eye"></i> 预览
+                                </a>
+                                {% if row_count <= config.MAX_DOWNLOAD_ROWS %}
+                                <a href="{{ url_for('download', table_name=t.table_name, owner=t.owner) }}"
+                                   class="btn btn-sm btn-download" title="下载 Excel">
+                                    <i class="bi bi-download"></i> 下载
+                                </a>
+                                {% else %}
+                                <a href="{{ url_for('table_preview', table_name=t.table_name, owner=t.owner) }}"
+                                   class="btn btn-sm btn-outline-danger" title="表过大，请使用分片下载">
+                                    <i class="bi bi-download"></i> 分片下载
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- 颜色图例 -->
+    <div class="mt-2">
+        <small class="text-muted">
+            行数颜色:
+            <span class="badge bg-success">安全</span> &lt; {{ "{:,}".format(config.DOWNLOAD_WARN_ROWS) }}
+            <span class="badge bg-info text-dark">较大</span> {{ "{:,}".format(config.DOWNLOAD_WARN_ROWS) }} ~ {{ "{:,}".format(config.DOWNLOAD_CONFIRM_ROWS) }}
+            <span class="badge bg-warning text-dark">大表</span> {{ "{:,}".format(config.DOWNLOAD_CONFIRM_ROWS) }} ~ {{ "{:,}".format(config.MAX_DOWNLOAD_ROWS) }}
+            <span class="badge bg-danger">超大</span> &gt; {{ "{:,}".format(config.MAX_DOWNLOAD_ROWS) }}
+        </small>
+    </div>
+
+{% elif not error %}
+    <div class="empty-state">
+        <i class="bi bi-inbox"></i>
+        {% if search %}
+        <p>没有找到包含 "<strong>{{ search }}</strong>" 的表</p>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">清除搜索</a>
+        {% else %}
+        <p>当前数据库中没有匹配的数据表</p>
+        <small class="text-muted">当前过滤模式: <strong>{{ config.TABLE_FILTER_MODE }}</strong></small>
+        {% if config.TABLE_FILTER_PATTERNS %}
+        <br><small class="text-muted">过滤规则: {{ config.TABLE_FILTER_PATTERNS }}</small>
+        {% endif %}
+        {% endif %}
+    </div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function filterTables(query) {
+    var q = query.toLowerCase();
+    document.querySelectorAll('.schema-group').forEach(function(group) {
+        var visible = false;
+        group.querySelectorAll('.table-row').forEach(function(row) {
+            var name = row.getAttribute('data-table-name');
+            if (!q || name.indexOf(q) !== -1) {
+                row.style.display = '';
+                visible = true;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        group.style.display = visible ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

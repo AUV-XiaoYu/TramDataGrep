@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}系统诊断 - 电车票务数据平台{% endblock %}
+{% block content %}
+
+<h4 class="mb-3"><i class="bi bi-speedometer2"></i> 系统诊断</h4>
+
+<!-- 硬件信息 -->
+<div class="card mb-3">
+    <div class="card-header"><i class="bi bi-cpu"></i> 服务器硬件</div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div style="font-size:2rem; font-weight:700;">
+                        {% if hardware.total_memory_mb > 0 %}
+                        {{ hardware.total_memory_mb }} MB
+                        {% else %}
+                        <span class="text-muted">未检测</span>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted">总内存</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div style="font-size:2rem; font-weight:700; color:#198754;">
+                        {% if hardware.available_memory_mb > 0 %}
+                        {{ hardware.available_memory_mb }} MB
+                        {% else %}
+                        <span class="text-muted">未检测</span>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted">可用内存</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="border rounded p-3 text-center">
+                    <div style="font-size:2rem; font-weight:700;">
+                        {{ hardware.cpu_count }}
+                    </div>
+                    <small class="text-muted">CPU 核心</small>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+            <div class="col-md-4">
+                <span class="text-muted">Python 版本：</span>
+                <code>{{ hardware.python_version }}</code>
+            </div>
+            <div class="col-md-4">
+                <span class="text-muted">安全下载上限：</span>
+                <strong>~{{ hardware.safe_download_size_mb }} MB</strong>
+            </div>
+            <div class="col-md-4">
+                <span class="text-muted">安全行数上限：</span>
+                <strong>~{{ "{:,}".format(hardware.safe_download_rows) }} 行</strong>
+            </div>
+        </div>
+
+        {% if hardware.total_memory_mb == 0 %}
+        <div class="alert alert-warning mt-3 mb-0">
+            <i class="bi bi-info-circle"></i>
+            安装 <code>psutil</code> 可获取更精确的硬件信息：
+            <code>pip install psutil</code>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Oracle 连接测试 -->
+<div class="card mb-3">
+    <div class="card-header">
+        <i class="bi bi-database"></i> Oracle 连接测试
+    </div>
+    <div class="card-body">
+        {% if oracle_status.ok %}
+        <div class="alert alert-success mb-0">
+            <i class="bi bi-check-circle-fill"></i>
+            <strong>连接正常</strong> — 延迟 {{ oracle_status.latency_ms }} ms
+        </div>
+        {% else %}
+        <div class="alert alert-danger mb-0">
+            <i class="bi bi-x-circle-fill"></i>
+            <strong>连接失败：</strong>{{ oracle_status.error }}
+        </div>
+        {% endif %}
+
+        <div class="mt-2">
+            <small class="text-muted">
+                连接信息: {{ config.ORACLE_USER }}@{{ config.ORACLE_DSN }}
+            </small>
+        </div>
+    </div>
+</div>
+
+<!-- 表统计 -->
+<div class="card mb-3">
+    <div class="card-header"><i class="bi bi-bar-chart"></i> 数据库表统计</div>
+    <div class="card-body">
+        {% if stats.total_tables >= 0 %}
+        <div class="row">
+            <div class="col-sm-3 text-center">
+                <div style="font-size:1.5rem; font-weight:700;">{{ stats.total_tables }}</div>
+                <small class="text-muted">总表数</small>
+            </div>
+            <div class="col-sm-3 text-center">
+                <div style="font-size:1.5rem; font-weight:700;">{{ stats.schemas }}</div>
+                <small class="text-muted">Schema 数</small>
+            </div>
+            <div class="col-sm-3 text-center">
+                <div style="font-size:1.5rem; font-weight:700; color:#fd7e14;">{{ stats.large_tables }}</div>
+                <small class="text-muted">&gt; {{ "{:,}".format(config.DOWNLOAD_WARN_ROWS) }} 行</small>
+            </div>
+            <div class="col-sm-3 text-center">
+                <div style="font-size:1.5rem; font-weight:700; color:#dc3545;">{{ stats.huge_tables }}</div>
+                <small class="text-muted">&gt; {{ "{:,}".format(config.DOWNLOAD_CONFIRM_ROWS) }} 行</small>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-danger mb-0">无法获取统计信息</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 当前配置 -->
+<div class="card mb-3">
+    <div class="card-header"><i class="bi bi-gear"></i> 当前配置</div>
+    <div class="card-body">
+        <table class="table table-sm">
+            <tr><td style="width:200px;">表过滤模式</td><td><strong>{{ config.TABLE_FILTER_MODE }}</strong></td></tr>
+            <tr><td>过滤规则</td><td><code>{{ config.TABLE_FILTER_PATTERNS or '(无)' }}</code></td></tr>
+            <tr><td>排除Schema</td><td><code>{{ config.EXTRA_EXCLUDED_SCHEMAS or '(无)' }}</code></td></tr>
+            <tr><td>预览行数</td><td>{{ config.MAX_PREVIEW_ROWS }}</td></tr>
+            <tr><td>下载警告阈值</td><td>{{ "{:,}".format(config.DOWNLOAD_WARN_ROWS) }} 行</td></tr>
+            <tr><td>下载确认阈值</td><td>{{ "{:,}".format(config.DOWNLOAD_CONFIRM_ROWS) }} 行</td></tr>
+            <tr><td>下载上限</td><td>{{ "{:,}".format(config.MAX_DOWNLOAD_ROWS) }} 行</td></tr>
+            <tr><td>分片大小</td><td>{{ "{:,}".format(config.DOWNLOAD_SPLIT_CHUNK_ROWS) }} 行/片</td></tr>
+            <tr><td>分片文件阈值</td><td>{{ config.DOWNLOAD_SPLIT_SIZE_MB }} MB</td></tr>
+            <tr><td>最低空闲内存比</td><td>{{ "%.0f"|format(config.MIN_FREE_MEMORY_RATIO * 100) }}%</td></tr>
+            <tr><td>内存限制比</td><td>{{ "%.0f"|format(config.MAX_DOWNLOAD_MEMORY_RATIO * 100) }}%</td></tr>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

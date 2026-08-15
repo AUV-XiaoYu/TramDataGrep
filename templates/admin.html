@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}用户管理 - 电车票务数据平台{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-people-fill"></i> 用户管理</h4>
+        <small class="text-muted">共 {{ users|length }} 个用户</small>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
+        <i class="bi bi-person-plus"></i> 新建用户
+    </button>
+</div>
+
+<!-- 用户列表 -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>用户名</th>
+                    <th>显示名称</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>最后登录</th>
+                    <th class="text-center">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr class="{% if not u.is_active %}table-secondary{% endif %}">
+                    <td>
+                        <strong>{{ u.username }}</strong>
+                        {% if u.id == current_user.id %}
+                        <span class="badge bg-info text-dark" style="font-size:.65rem">当前</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ u.display_name or u.username }}</td>
+                    <td>
+                        {% if u.is_admin %}
+                        <span class="badge bg-danger">管理员</span>
+                        {% else %}
+                        <span class="badge bg-secondary">普通用户</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if u.is_active %}
+                        <span class="badge bg-success">启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">禁用</span>
+                        {% endif %}
+                    </td>
+                    <td><small class="text-muted">{{ u.created_at }}</small></td>
+                    <td><small class="text-muted">{{ u.last_login or '从未登录' }}</small></td>
+                    <td class="text-center">
+                        <div class="btn-group btn-group-sm">
+                            <!-- 重置密码 -->
+                            <form method="POST" action="{{ url_for('admin_reset_password', user_id=u.id) }}"
+                                  onsubmit="return confirm('确定要重置用户 {{ u.username }} 的密码吗？')"
+                                  style="display:inline;">
+                                <button type="submit" class="btn btn-outline-warning btn-sm"
+                                        title="重置密码">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </button>
+                            </form>
+
+                            <!-- 启用/禁用 -->
+                            {% if u.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin_toggle_active', user_id=u.id) }}"
+                                  style="display:inline;">
+                                <button type="submit"
+                                        class="btn btn-outline-{{ 'secondary' if u.is_active else 'success' }} btn-sm"
+                                        title="{{ '禁用' if u.is_active else '启用' }}">
+                                    <i class="bi bi-{{ 'slash-circle' if u.is_active else 'check-circle' }}"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+
+                            <!-- 删除 -->
+                            {% if u.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+                                  onsubmit="return confirm('确定要删除用户 {{ u.username }} 吗？删除后该用户将无法登录。')"
+                                  style="display:inline;">
+                                <button type="submit" class="btn btn-outline-danger btn-sm"
+                                        title="删除">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 新建用户模态框 -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('admin_create_user') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-plus"></i> 新建用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="new_username" class="form-label">用户名 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="new_username" name="username"
+                               placeholder="英文字母、数字、下划线" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_display_name" class="form-label">显示名称</label>
+                        <input type="text" class="form-control" id="new_display_name" name="display_name"
+                               placeholder="例如：张三">
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">密码 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="new_password" name="password"
+                               placeholder="至少6位" required minlength="6">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="new_is_admin" name="is_admin" value="1">
+                        <label class="form-check-label" for="new_is_admin">设为管理员</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">创建用户</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

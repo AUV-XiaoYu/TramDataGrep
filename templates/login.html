@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}登录 - 电车票务数据平台{% endblock %}
+{% block extra_head %}
+<style>
+    body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .login-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .login-card {
+        width: 100%;
+        max-width: 420px;
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.15);
+        border: none;
+    }
+    .login-header {
+        text-align: center;
+        padding: 32px 32px 0;
+    }
+    .login-header .icon {
+        font-size: 3rem;
+        color: #667eea;
+    }
+    .login-header h3 {
+        margin-top: 8px;
+        font-weight: 700;
+        color: #333;
+    }
+    .login-header p {
+        color: #999;
+        font-size: .875rem;
+    }
+    .login-body { padding: 24px 32px 32px; }
+    .login-body .form-label { font-weight: 500; font-size: .875rem; }
+    .login-body .btn { padding: 10px; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card card">
+        <div class="login-header">
+            <div class="icon"><i class="bi bi-train-front-fill"></i></div>
+            <h3>电车票务数据平台</h3>
+            <p>请使用您的账号登录</p>
+        </div>
+        <div class="login-body">
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="mb-3">
+                    <label for="username" class="form-label">用户名</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-person"></i></span>
+                        <input type="text" class="form-control" id="username" name="username"
+                               placeholder="请输入用户名" required autofocus>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label for="password" class="form-label">密码</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                        <input type="password" class="form-control" id="password" name="password"
+                               placeholder="请输入密码" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-box-arrow-in-right"></i> 登 录
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
