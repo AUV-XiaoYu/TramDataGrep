@@ -136,25 +136,9 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('index') }}">
-                        <i class="bi bi-table"></i> 数据表浏览
-                    </a>
-                </li>
-                {% if current_user.is_admin %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('admin') }}">
-                        <i class="bi bi-people-fill"></i> 用户管理
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('diagnostics') }}">
-                        <i class="bi bi-speedometer2"></i> 系统诊断
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
+            <span class="navbar-text me-auto text-white-50">
+                <i class="bi bi-table"></i> 数据表浏览
+            </span>
 
             <ul class="navbar-nav">
                 <li class="nav-item dropdown">
@@ -208,6 +192,20 @@
 <div class="main-container">
     {% block content %}{% endblock %}
 </div>
+
+<!-- 页脚：管理功能入口（低调放置） -->
+<footer class="border-top bg-white py-3 mt-4">
+    <div class="text-center">
+        {% if current_user.is_admin %}
+        <a class="btn btn-sm btn-outline-secondary me-2" href="{{ url_for('admin') }}">
+            <i class="bi bi-people-fill"></i> 用户管理
+        </a>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('diagnostics') }}">
+            <i class="bi bi-speedometer2"></i> 系统诊断
+        </a>
+        {% endif %}
+    </div>
+</footer>
 
 <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
 <script>
