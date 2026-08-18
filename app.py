@@ -10,7 +10,9 @@
 """
 import os
 import re
+import secrets
 from datetime import datetime
+from functools import wraps
 from urllib.parse import quote
 
 from flask import (
@@ -35,23 +37,39 @@ from backend import get_backend
 db_oracle = get_backend()
 
 
+def _parse_datetime(s):
+    """解析 datetime-local 输入（YYYY-MM-DDTHH:MM[:SS]），返回 datetime；失败返回 None。"""
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def _parse_date_filter(req):
     """
     从请求参数中提取日期筛选条件。
-    返回 (date_column, date_start, date_end) 三元组，
-    任一缺失则全部为 None。
+    返回 (date_column, date_start, date_end) 三元组，任一缺失则全部为 None。
+    date_start/date_end 为 datetime（秒级精度）。
     """
     col = req.args.get("date_col", "").strip()
     start = req.args.get("date_start", "").strip()
     end = req.args.get("date_end", "").strip()
     if not col or not start or not end:
         return None, None, None
-    try:
-        ds = datetime.strptime(start, "%Y-%m-%d").date()
-        de = datetime.strptime(end, "%Y-%m-%d").date()
-        return col, ds, de
-    except ValueError:
+    ds = _parse_datetime(start)
+    de = _parse_datetime(end)
+    if ds is None or de is None:
         return None, None, None
+    return col, ds, de
+
+
+def _format_datetime_local(dt):
+    """把 datetime 转成 datetime-local 输入框所需的 'YYYY-MM-DDTHH:MM:SS' 字符串。"""
+    if dt is None:
+        return ""
+    return dt.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _make_date_params(date_column, date_start, date_end):
@@ -61,10 +79,39 @@ def _make_date_params(date_column, date_start, date_end):
     return {}
 
 
+def _default_date_column(date_columns):
+    """默认的排序/筛选日期列：优先 RECEIVEDATE，否则取第一个日期列。"""
+    if not date_columns:
+        return None
+    for dc in date_columns:
+        if dc.upper() == "RECEIVEDATE":
+            return dc
+    return date_columns[0]
+
+
 def _parse_format(req):
     """从请求参数解析导出格式：xlsx 或 csv，默认 xlsx"""
     fmt = req.args.get("format", "xlsx").lower()
     return fmt if fmt in ("xlsx", "csv") else "xlsx"
+
+
+def api_token_required(fn):
+    """对外 API 的 Bearer Token 鉴权。
+
+    请求头需携带: Authorization: Bearer <token>
+    token 由环境变量 API_TOKEN 配置；未配置时 API 整体关闭（返回 403）。
+    使用 secrets.compare_digest 做恒定时间比较，防时序攻击。
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not Config.API_TOKEN:
+            return jsonify({"error": "对外 API 未启用（未配置 API_TOKEN）"}), 403
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:].strip() if auth.startswith("Bearer ") else ""
+        if not token or not secrets.compare_digest(token, Config.API_TOKEN):
+            return jsonify({"error": "无效的 API Token"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 # ===== 应用工厂 =====
@@ -227,15 +274,19 @@ def create_app():
         if not re.match(r"^[A-Za-z0-9_$#]+$", table_name):
             abort(400)
 
-        # 日期筛选参数
+        # 日期筛选参数（秒级精度）
         date_col, date_start, date_end = _parse_date_filter(request)
         date_kw = _make_date_params(date_col, date_start, date_end)
 
         try:
             columns_info = db_oracle.get_table_columns(owner, table_name)
             date_columns = db_oracle.get_date_columns(owner, table_name)
+            default_date_col = _default_date_column(date_columns)
+            # 预览排序列：显式筛选列 > 默认日期列（未筛选时也按它降序预览）
+            sort_col = date_col or default_date_col
             columns, rows = db_oracle.get_table_data(
-                owner, table_name, limit=Config.MAX_PREVIEW_ROWS, **date_kw
+                owner, table_name, limit=Config.MAX_PREVIEW_ROWS,
+                date_column=sort_col, date_start=date_start, date_end=date_end,
             )
 
             try:
@@ -250,7 +301,10 @@ def create_app():
                 table_name=table_name, owner=owner,
                 columns_info=columns_info, columns=columns, rows=rows, plan=plan,
                 date_columns=date_columns,
-                date_col=date_col, date_start=date_start, date_end=date_end,
+                date_col=date_col,
+                date_start=_format_datetime_local(date_start),
+                date_end=_format_datetime_local(date_end),
+                default_date_col=default_date_col,
                 preview_limit=Config.MAX_PREVIEW_ROWS,
             )
         except Exception as e:
@@ -527,6 +581,77 @@ def create_app():
             return jsonify(plan)
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+
+    # ===== 对外 API（供其他系统集成，Bearer Token 鉴权） =====
+
+    @app.route("/api/v1/tables")
+    @api_token_required
+    def api_v1_tables():
+        """列出当前后端可导出的所有表及其日期列（JSON）。
+
+        返回: {"tables": [{"owner", "table_name", "num_rows", "last_analyzed",
+                           "date_columns"}], "count": N}
+        """
+        try:
+            tables = db_oracle.list_tables()
+            result = []
+            for t in tables:
+                owner, name = t["owner"], t["table_name"]
+                try:
+                    date_columns = db_oracle.get_date_columns(owner, name)
+                except Exception:
+                    date_columns = []
+                result.append({
+                    "owner": owner,
+                    "table_name": name,
+                    "num_rows": t.get("num_rows"),
+                    "last_analyzed": t.get("last_analyzed"),
+                    "date_columns": date_columns,
+                })
+            return jsonify({"tables": result, "count": len(result)})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/v1/table/<table_name>/data")
+    @api_token_required
+    def api_v1_table_data(table_name):
+        """流式返回表的 CSV 数据（UTF-8 with BOM，首行为列名）。
+
+        参数（均可选）:
+            owner       表所属 Schema，默认取配置的 Oracle 用户
+            date_col    日期筛选列名
+            date_start  起始时间（YYYY-MM-DD 或 YYYY-MM-DDTHH:MM:SS，含）
+            date_end    结束时间（同上，含）
+        不传日期参数时导出全表。
+        """
+        owner = request.args.get("owner", Config.ORACLE_USER.upper())
+        if not re.match(r"^[A-Za-z0-9_$#]+$", table_name):
+            return jsonify({"error": "无效的表名"}), 400
+
+        date_col, date_start, date_end = _parse_date_filter(request)
+        date_kw = _make_date_params(date_col, date_start, date_end)
+
+        try:
+            row_gen = db_oracle.stream_table_data(owner, table_name, **date_kw)
+            columns = next(row_gen)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+        def generate():
+            yield from export.generate_csv(columns, row_gen)
+
+        return Response(
+            generate(),
+            mimetype="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename*=UTF-8''{quote(table_name)}.csv"
+                ),
+            },
+        )
 
 
     # ===== 系统诊断页面 =====

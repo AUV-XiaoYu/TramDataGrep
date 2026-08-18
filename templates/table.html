@@ -24,18 +24,18 @@
                 <select name="date_col" id="date_col" class="form-select form-select-sm" style="min-width:160px;">
                     <option value="">— 不过滤 —</option>
                     {% for dc in date_columns %}
-                    <option value="{{ dc }}" {% if date_col == dc %}selected{% endif %}>{{ dc }}</option>
+                    <option value="{{ dc }}" {% if date_col == dc or (not date_col and dc == default_date_col) %}selected{% endif %}>{{ dc }}{% if dc == default_date_col %}（推荐）{% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-auto">
-                <label class="form-label small text-muted">开始日期</label>
-                <input type="date" id="date_start" name="date_start" class="form-control form-control-sm"
+                <label class="form-label small text-muted">开始时间</label>
+                <input type="datetime-local" step="1" id="date_start" name="date_start" class="form-control form-control-sm"
                        value="{{ date_start }}">
             </div>
             <div class="col-auto">
-                <label class="form-label small text-muted">结束日期</label>
-                <input type="date" id="date_end" name="date_end" class="form-control form-control-sm"
+                <label class="form-label small text-muted">结束时间</label>
+                <input type="datetime-local" step="1" id="date_end" name="date_end" class="form-control form-control-sm"
                        value="{{ date_end }}">
             </div>
             <div class="col-auto">
@@ -85,7 +85,7 @@
             <strong>{{ table_name }}</strong>
             <small class="text-muted ms-2">({{ owner }})</small>
             {% if date_col %}
-            <span class="badge bg-primary ms-2">{{ date_col }}: {{ date_start }} ~ {{ date_end }}</span>
+            <span class="badge bg-primary ms-2">{{ date_col }}: {{ date_start|replace('T', ' ') }} ~ {{ date_end|replace('T', ' ') }}</span>
             {% endif %}
         </div>
         <div class="btn-group">

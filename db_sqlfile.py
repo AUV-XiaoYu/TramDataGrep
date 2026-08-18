@@ -410,8 +410,15 @@ def _is_date_column(name, dtype):
 
 
 def _to_iso(d):
-    """把 date/datetime 转成 ISO 字符串，用于 SQLite 字符串比较。"""
+    """把 date/datetime 转成 ISO 字符串，用于 SQLite 字符串比较。
+
+    午夜（00:00:00）的 datetime 只保留日期部分，使纯日期列（如 REPORTDATE 存成
+    'YYYY-MM-DD'）在按天筛选时也能命中；否则 'YYYY-MM-DD' < 'YYYY-MM-DD 00:00:00'
+    会因字符串前缀比较而漏掉午夜当天的数据。
+    """
     if isinstance(d, datetime):
+        if (d.hour, d.minute, d.second, d.microsecond) == (0, 0, 0, 0):
+            return d.strftime("%Y-%m-%d")
         return d.strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(d, date):
         return d.isoformat()
@@ -419,17 +426,28 @@ def _to_iso(d):
 
 
 def _to_iso_end(d):
-    """日期筛选的右开区间上界：date 类型加一天。"""
+    """日期筛选的右开区间上界：date 加一天，datetime 加一秒（含结束秒）。
+
+    上界落在午夜（00:00:00）时只保留日期部分，使纯日期列（'YYYY-MM-DD'）不会因
+    字符串前缀比较（'YYYY-MM-DD' < 'YYYY-MM-DD 00:00:00'）而被错误纳入下一天。
+    """
     if isinstance(d, datetime):
-        return d.strftime("%Y-%m-%d %H:%M:%S")
+        end = d + timedelta(seconds=1)
+        if (end.hour, end.minute, end.second, end.microsecond) == (0, 0, 0, 0):
+            return end.strftime("%Y-%m-%d")
+        return end.strftime("%Y-%m-%d %H:%M:%S")
     if isinstance(d, date):
         return (d + timedelta(days=1)).isoformat()
     return str(d)
 
 
 def _build_where(table_name, date_column, date_start, date_end):
-    """构建日期筛选 WHERE 子句。返回 (where_sql, params)。"""
-    if not date_column:
+    """构建日期筛选 WHERE 子句。返回 (where_sql, params)。
+
+    仅当 date_column 与起止时间都给出时才筛选；只给 date_column（用于排序）时不加
+    WHERE，避免把 None 格式化成字符串导致查询出错。
+    """
+    if not date_column or date_start is None or date_end is None:
         return "", ()
     actual_col = _resolve_column(table_name, date_column)
     start_s = _to_iso(date_start)

@@ -77,6 +77,12 @@ class Config:
     # 可额外排除的 Schema 名称（在系统 Schema 过滤之后）
     EXTRA_EXCLUDED_SCHEMAS = _parse_list_env("EXTRA_EXCLUDED_SCHEMAS", [])
 
+    # ===== 对外 API（供其他系统集成） =====
+    # 静态 Bearer Token，下游系统通过 Authorization: Bearer <token> 调用 /api/v1/*。
+    # 留空 = 对外 API 整体关闭（返回 403）。部署时用环境变量设置：
+    #   set API_TOKEN=<一串足够长且随机的字符串>
+    API_TOKEN = os.environ.get("API_TOKEN", "")
+
     # ===== 数据预览与下载限制 =====
     MAX_PREVIEW_ROWS = int(os.environ.get("MAX_PREVIEW_ROWS", "100"))
     DOWNLOAD_CHUNK_SIZE = int(os.environ.get("DOWNLOAD_CHUNK_SIZE", "1000"))

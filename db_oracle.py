@@ -54,8 +54,12 @@ def _validate_column_name(owner, table_name, column_name):
 
 
 def _build_where_clause(owner, table_name, date_column, date_start, date_end, params):
-    """构建安全的日期筛选 WHERE 子句。返回 WHERE 字符串，同时修改 params dict。"""
-    if not date_column:
+    """构建安全的日期筛选 WHERE 子句。返回 WHERE 字符串，同时修改 params dict。
+
+    仅当 date_column 与起止时间都给出时才筛选；只给 date_column（用于排序）时返回空
+    WHERE，避免把 None 绑定到 :date_start/:date_end。
+    """
+    if not date_column or date_start is None or date_end is None:
         return ""
     _validate_column_name(owner, table_name, date_column)
     params["date_start"] = date_start
