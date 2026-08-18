@@ -52,7 +52,7 @@ echo              调整启动模式
 echo ================================================
 echo   [1] 正常模式（连接 Oracle）
 echo   [2] 演示模式-假数据（无需 Oracle）
-echo   [3] 演示模式-真实数据（从 SQL 文件构建）
+echo   [3] 演示模式-真实数据（内置 7.10.csv / 可选 SQL）
 echo   [0] 返回主菜单
 echo ================================================
 choice /C 1230 /N /M "请选择 [1-3]，0 返回: "
@@ -73,15 +73,14 @@ goto MODE_MENU
 
 :SET_DEMO_REAL
 set "DATA_BACKEND=demo_real"
-echo [OK] 启动模式已设为：演示模式-真实数据
 set "REAL_DATA_SQL_PATH="
-set /p "REAL_DATA_SQL_PATH=请输入 SQL 文件完整路径: "
-if "%REAL_DATA_SQL_PATH%"=="" (
-    echo [Error] SQL 文件路径不能为空，已切回正常模式（Oracle）
-    set "DATA_BACKEND=oracle"
-    goto MODE_MENU
+set /p "REAL_DATA_SQL_PATH=请输入 SQL 文件完整路径（直接回车使用内置 7.10.csv）: "
+if not defined REAL_DATA_SQL_PATH (
+    echo [OK] 未指定 SQL 文件，将使用内置测试数据 7.10.csv
+) else (
+    echo [OK] SQL 文件路径已设置：%REAL_DATA_SQL_PATH%
 )
-echo [OK] SQL 文件路径已设置：%REAL_DATA_SQL_PATH%
+echo [OK] 启动模式已设为：演示模式-真实数据
 goto MODE_MENU
 
 REM ============================================

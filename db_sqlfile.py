@@ -1,11 +1,12 @@
 """
-真实数据后端：从一个 SQL 数据文件构建本地 SQLite 库，并导出真实数据。
+真实数据后端：从一个 SQL 或 CSV 数据文件构建本地 SQLite 库，并导出真实数据。
 
 接口签名与 db_oracle.py 完全一致，app.py 无需任何改动即可切换。
 
 工作方式：
-    1. 读取 Config.REAL_DATA_SQL_PATH 指向的 .sql 文件
-    2. 把 SQL 语句执行进本地 SQLite（缓存到 Config.REAL_DATA_DB_PATH）
+    1. 确定数据源文件：优先 Config.REAL_DATA_SQL_PATH 指向的 .sql 文件；
+       未配置时回退到 Config.REAL_DATA_CSV_PATH 指向的 .csv 文件（默认 7.10.csv）
+    2. 把 SQL 或 CSV 数据构建进本地 SQLite（缓存到 Config.REAL_DATA_DB_PATH）
     3. 后续所有查询都从 SQLite 读取，返回格式与 Oracle 后端一致
 
 SQL 文件格式约定（重要）：
@@ -18,11 +19,20 @@ SQL 文件格式约定（重要）：
       这样日期筛选的字符串比较才准确。
     - 复杂 Oracle 转储（触发器、存储过程、序列等）不受支持，请用可移植格式导出。
 
+CSV 文件格式约定：
+    - 文本 .csv 文件，首行为列名（表头），其余为数据行，字段用逗号分隔。
+    - 列全部按 TEXT 处理；列名含 DATE/TIME 的列会被识别为日期列，其值会从
+      'YYYY/M/D H:MM:SS' 或 'YYYY/M/D' 自动规范化为 ISO 文本，保证日期筛选正确。
+    - 表名由 CSV 文件名推导（7.10.csv -> 表名 7_10，非法字符替换为下划线）。
+
 配置项（见 config.py）：
-    REAL_DATA_SQL_PATH    .sql 文件路径（必填）
+    REAL_DATA_SQL_PATH    .sql 文件路径（可选，设置后优先使用）
+    REAL_DATA_CSV_PATH    .csv 文件路径（默认项目根目录下的 7.10.csv）
     REAL_DATA_DB_PATH     构建出的 SQLite 库路径（默认 instance/real_data.db）
     REAL_DATA_OWNER       列表里显示的 Schema 名（默认 TRAM，仅用于展示）
 """
+import csv
+import io
 import os
 import re
 import sqlite3
@@ -169,39 +179,146 @@ def _infer_create_table(conn, insert_sql):
     conn.execute(f'CREATE TABLE "{table}" ({col_defs})')
 
 
+# ===== CSV 文件解析 =====
+
+def _read_csv(path):
+    """读取 CSV 文件，返回 (columns, rows)。"""
+    with open(path, "rb") as f:
+        raw = f.read()
+    text = None
+    for enc in ("utf-8-sig", "gbk", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8", errors="replace")
+
+    # 导出工具可能在表头前留下 '?' 乱码（BOM 被错误转码所致），去掉首引号前的垃圾
+    stripped = text.lstrip("?")
+    if stripped.startswith('"'):
+        text = stripped
+
+    reader = csv.reader(io.StringIO(text))
+    rows = [r for r in reader if any(cell != "" for cell in r)]
+    if not rows:
+        raise ValueError(f"CSV 文件为空: {path}")
+    return rows[0], rows[1:]
+
+
+def _derive_table_name(path):
+    """从 CSV 文件名推导表名（非法字符替换为下划线）。"""
+    stem = os.path.splitext(os.path.basename(path))[0]
+    name = re.sub(r"[^A-Za-z0-9_$#]", "_", stem)
+    return name or "DATA"
+
+
+def _normalize_csv_date(value):
+    """把 '2026/7/10 5:00:38' / '2026/7/10' 规范化为 ISO 文本，保证日期比较正确。"""
+    v = (value or "").strip()
+    if not v:
+        return v
+    for fmt, out in (("%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"),
+                     ("%Y/%m/%d", "%Y-%m-%d")):
+        try:
+            return datetime.strptime(v, fmt).strftime(out)
+        except ValueError:
+            continue
+    return v
+
+
+def _load_csv(conn, path):
+    """把 CSV 文件构建成一张 SQLite 表（列全按 TEXT，日期列值规范化为 ISO）。"""
+    columns, rows = _read_csv(path)
+    table = _derive_table_name(path)
+
+    # 列名去重（空列名或重复列名都补一个唯一名，避免建表失败）
+    seen = {}
+    unique_cols = []
+    for c in columns:
+        name = c or "COL"
+        if name in seen:
+            seen[name] += 1
+            name = f"{name}_{seen[name]}"
+        else:
+            seen[name] = 1
+        unique_cols.append(name)
+
+    date_idx = {i for i, c in enumerate(unique_cols) if _is_date_column(c, "TEXT")}
+
+    col_defs = ", ".join(f'"{c}" TEXT' for c in unique_cols)
+    conn.execute(f'CREATE TABLE "{table}" ({col_defs})')
+
+    placeholders = ", ".join("?" for _ in unique_cols)
+    insert_sql = f'INSERT INTO "{table}" VALUES ({placeholders})'
+
+    batch = []
+    for raw in rows:
+        row = list(raw)
+        if len(row) < len(unique_cols):
+            row += [""] * (len(unique_cols) - len(row))
+        else:
+            row = row[:len(unique_cols)]
+        row = [_normalize_csv_date(v) if i in date_idx else v for i, v in enumerate(row)]
+        batch.append(row)
+        if len(batch) >= 1000:
+            conn.executemany(insert_sql, batch)
+            batch = []
+    if batch:
+        conn.executemany(insert_sql, batch)
+
+
 # ===== 构建本地 SQLite 库 =====
 
+def _resolve_source_path():
+    """确定真实数据源文件：优先 SQL 文件，未配置时回退到 CSV 文件。"""
+    path = Config.REAL_DATA_SQL_PATH
+    if path:
+        return path
+    return Config.REAL_DATA_CSV_PATH
+
+
+def _load_sql(conn, sql_path):
+    """把 SQL 文件里的语句依次执行进 SQLite 连接。"""
+    sql_text = _read_sql(sql_path)
+    for stmt in _split_statements(sql_text):
+        stmt = _normalize_statement(stmt)
+        if not stmt.strip():
+            continue
+        try:
+            conn.execute(stmt)
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e).lower() and stmt.lstrip().upper().startswith("INSERT"):
+                _infer_create_table(conn, stmt)
+                conn.execute(stmt)
+            else:
+                raise
+
+
 def _build_db():
-    """读取 SQL 文件并构建本地 SQLite 库，返回库文件路径。"""
-    sql_path = Config.REAL_DATA_SQL_PATH
-    if not sql_path or not os.path.exists(sql_path):
+    """读取 SQL 或 CSV 数据文件并构建本地 SQLite 库，返回库文件路径。"""
+    src_path = _resolve_source_path()
+    if not src_path or not os.path.exists(src_path):
         raise FileNotFoundError(
-            f"未找到真实数据 SQL 文件：{sql_path or '(未配置)'}。"
-            f"请设置环境变量 REAL_DATA_SQL_PATH 指向 .sql 文件。"
+            f"未找到真实数据文件：{src_path or '(未配置)'}。"
+            f"请设置环境变量 REAL_DATA_SQL_PATH 指向 .sql 文件，"
+            f"或 REAL_DATA_CSV_PATH 指向 .csv 文件。"
         )
 
     db_path = Config.REAL_DATA_DB_PATH
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-    # 缓存库比 SQL 文件新就直接复用，避免每次启动重建
-    if os.path.exists(db_path) and os.path.getmtime(db_path) >= os.path.getmtime(sql_path):
+    # 缓存库比数据文件新就直接复用，避免每次启动重建
+    if os.path.exists(db_path) and os.path.getmtime(db_path) >= os.path.getmtime(src_path):
         return db_path
 
     conn = sqlite3.connect(db_path)
     try:
-        sql_text = _read_sql(sql_path)
-        for stmt in _split_statements(sql_text):
-            stmt = _normalize_statement(stmt)
-            if not stmt.strip():
-                continue
-            try:
-                conn.execute(stmt)
-            except sqlite3.OperationalError as e:
-                if "no such table" in str(e).lower() and stmt.lstrip().upper().startswith("INSERT"):
-                    _infer_create_table(conn, stmt)
-                    conn.execute(stmt)
-                else:
-                    raise
+        if src_path.lower().endswith(".csv"):
+            _load_csv(conn, src_path)
+        else:
+            _load_sql(conn, src_path)
         conn.commit()
     except Exception:
         # 构建失败时清掉半成品库，避免下次误用

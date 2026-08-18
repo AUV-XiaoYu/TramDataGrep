@@ -54,8 +54,12 @@ class Config:
     # ===== 演示模式（已由 DATA_BACKEND 取代，保留仅为向后兼容） =====
     DEMO_MODE = os.environ.get("DEMO_MODE", "0") == "1"
 
-    # ===== 真实数据模式（从 SQL 文件构建本地 SQLite 库） =====
+    # ===== 真实数据模式（从 SQL 或 CSV 文件构建本地 SQLite 库） =====
     REAL_DATA_SQL_PATH = os.environ.get("REAL_DATA_SQL_PATH") or None
+    # 未指定 SQL 文件时，回退到 CSV 文件（默认用项目内的 7.10.csv 作为固定测试数据）
+    REAL_DATA_CSV_PATH = os.environ.get("REAL_DATA_CSV_PATH") or os.path.join(
+        _base_dir, "7.10.csv"
+    )
     REAL_DATA_DB_PATH = os.environ.get("REAL_DATA_DB_PATH") or os.path.join(
         _base_dir, "instance", "real_data.db"
     )
