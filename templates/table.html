@@ -195,53 +195,6 @@
 </div>
 {% endif %}
 
-<!-- 列信息 -->
-<div class="card mb-3">
-    <div class="card-header">
-        <i class="bi bi-info-circle"></i> 列信息（共 {{ columns_info|length }} 列）
-    </div>
-    <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>列名</th>
-                    <th>数据类型</th>
-                    <th>长度</th>
-                    <th>可为空</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for col in columns_info %}
-                <tr>
-                    <td class="text-muted">{{ col.column_id }}</td>
-                    <td>
-                        <code>{{ col.column_name }}</code>
-                        {% if col.data_type in ('DATE','TIMESTAMP') %}
-                        <span class="badge bg-info text-dark" style="font-size:.65rem">日期</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {{ col.data_type }}
-                        {% if col.data_precision %}
-                        <small class="text-muted">({{ col.data_precision }},{{ col.data_scale or 0 }})</small>
-                        {% endif %}
-                    </td>
-                    <td>{{ col.data_length or '—' }}</td>
-                    <td>
-                        {% if col.nullable == 'Y' %}
-                        <span class="badge bg-success">YES</span>
-                        {% else %}
-                        <span class="badge bg-secondary">NO</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
 <!-- 数据预览 -->
 <div class="card">
     <div class="card-header">
