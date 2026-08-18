@@ -1,0 +1,44 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ===== 虚拟环境 =====
+venv/
+.venv/
+env/
+ENV/
+
+# ===== 测试 / 覆盖率 =====
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ===== 运行时数据（用户库 + demo_real 业务库，见 CLAUDE.md 约定 5）=====
+instance/
+*.db
+*.sqlite3
+
+# ===== 本地配置 / 密钥 =====
+.env
+.env.*
+!.env.example
+
+# ===== Claude Code 本地设置（个人权限，不共享）=====
+.claude/settings.local.json
+
+# ===== IDE / 编辑器 =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== 操作系统 =====
+Thumbs.db
+.DS_Store
